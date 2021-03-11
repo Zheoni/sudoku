@@ -1,58 +1,174 @@
+use super::{N, N2, SIZE};
+use crate::pos_util::*;
+
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt;
 
-const N: usize = 3;
-const N2: usize = N * N;
-pub const SIZE: usize = N2 * N2;
-
-#[inline]
-const fn to_pos(row: usize, col: usize) -> usize {
-	row * N2 + col
-}
-
 pub struct SudokuBoard([u16; SIZE]);
+
+type Domains = [[bool; N2]; SIZE];
 
 impl SudokuBoard {
 	pub fn solve(&mut self) -> bool {
+		let mut domains = self.calculate_domains();
+		// dbg!(self.still_possible(&domains));
+		self.backtracking(&mut domains)
+	}
+
+	fn backtracking(&mut self, domains: &mut Domains) -> bool {
 		// get the first empty postion
-		let pos = self.get_empty_position();
+		let pos = self.get_empty_position(domains, SIZE / 2);
 		if pos.is_none() {
+			// if there's none, we found a solution
 			return true;
 		}
 		let pos = pos.unwrap();
+		let mut temp_domains: Domains;
 
-		for n in 0..=N2 as u16 {
+		// try all possible values
+		for n in self.get_possible(pos, domains, N) {
+			// if the value can be fitted (maybe this check is unnecesary
+			// because of get_possible and the domain calculations)
 			if self.is_valid(n, pos) {
+				// apply the value and update the domains
 				self.0[pos] = n;
-				if self.solve() {
-					return true;
-				} else {
-					self.0[pos] = 0;
+				temp_domains = *domains;
+				self.update_domains(domains, pos);
+				// if sudoku can still be solved
+				if self.still_possible(domains) {
+					// contue searching
+					if self.backtracking(domains) {
+						// solution found
+						return true;
+					}
 				}
+				// backtrack: restore the position and the domains
+				self.0[pos] = 0;
+				*domains = temp_domains;
 			}
 		}
 
 		false
 	}
 
-	fn get_empty_position(&self) -> Option<usize> {
-		for (i, &n) in self.0.iter().enumerate() {
-			if n == 0 {
-				return Some(i);
+	fn calculate_domains(&self) -> Domains {
+		let mut domains = [[true; N2]; SIZE];
+
+		// for each cell
+		for (pos, &n) in self.0.iter().enumerate() {
+			// if the cell is assigned
+			if n != 0 {
+				// set all of its possible values to false
+				domains[pos].fill(false);
+				// update the domains as if the value was just assigned
+				self.update_domains(&mut domains, pos);
 			}
 		}
-		None
+		domains
+	}
+
+	fn update_domains(&self, domains: &mut Domains, updated_pos: usize) {
+		let new_val = self.0[updated_pos] as usize;
+		assert!(new_val > 0);
+		let new_val = new_val - 1;
+
+		// in all conflicting indexes (row, col, group) mark the new value as false
+		for p in adjacent_positions(updated_pos) {
+			domains[p][new_val] = false;
+		}
+	}
+
+	fn get_empty_position(&self, domains: &Domains, min_tie_to_solve: usize) -> Option<usize> {
+		// Calculate the number of available values for each empty position
+		let mut values: Vec<(u32, usize)> = domains
+			.iter()
+			.enumerate()
+			.filter(|(pos, _domain)| self.0[*pos] == 0)
+			.map(|(pos, domain)| {
+				(
+					domain.iter().fold(0, |acc, &x| acc + if x { 1 } else { 0 }),
+					pos,
+				)
+			})
+			.collect();
+
+		values.sort_unstable();
+
+		let &(min, mut min_index) = values.first()?;
+		let tied: Vec<_> = values.iter().take_while(|(v, _)| *v == min).collect();
+		if tied.len() > min_tie_to_solve {
+			let mut min_restrictions = usize::MAX;
+			for &(_, pos) in tied {
+				let mut pos_restrictions = 0;
+
+				for p in adjacent_positions(pos) {
+					if self.0[p] == 0 {
+						pos_restrictions += 1;
+					}
+				}
+
+				if pos_restrictions < min_restrictions {
+					min_restrictions = pos_restrictions;
+					min_index = pos;
+				}
+			}
+		}
+		Some(min_index)
+	}
+
+	fn get_possible(&self, pos: usize, domains: &Domains, min_possible_ordered: usize) -> Vec<u16> {
+		let possible: Vec<_> = domains[pos]
+			.iter()
+			.enumerate()
+			.filter(|(_, &possible)| possible)
+			.map(|(value, _)| value as u16 + 1)
+			.collect();
+
+		if possible.len() > min_possible_ordered {
+			let mut values = domains
+				.iter()
+				.enumerate()
+				.filter(|(pos, _)| self.0[*pos] == 0)
+				.fold([0; N2], |mut acc, (_, domain)| {
+					acc.iter_mut()
+						.zip(domain)
+						.for_each(|(accref, x)| *accref += if *x { 0 } else { 1 });
+					acc
+				})
+				.iter()
+				.enumerate()
+				.map(|(i, x)| (*x, i as u16 + 1))
+				.filter(|(_, x)| possible.contains(x))
+				.collect::<Vec<_>>();
+			values.sort_unstable();
+			values.iter().map(|(_, x)| *x).collect()
+		} else {
+			possible
+		}
+	}
+
+	fn still_possible(&self, domains: &Domains) -> bool {
+		!domains
+			.iter()
+			.enumerate()
+			.filter(|(pos, _)| self.0[*pos] == 0)
+			.map(|(_, domain)| domain.iter().fold(0, |acc, &x| acc + if x { 1 } else { 0 }))
+			.any(|sum| sum == 0)
 	}
 
 	fn is_valid(&self, n: u16, pos: usize) -> bool {
-		let (row, col) = (pos / N2, pos % N2);
-		self.is_valid_row(n, row) && self.is_valid_col(n, col) && self.is_valid_group(n, row, col)
+		for p in adjacent_positions(pos) {
+			if n == self.0[p] {
+				return false;
+			}
+		}
+		true
 	}
 
 	fn is_valid_row(&self, n: u16, row: usize) -> bool {
-		for i in 0..N2 {
-			if n == self.0[to_pos(row, i)] {
+		for p in row_positions(row) {
+			if n == self.0[p] {
 				return false;
 			}
 		}
@@ -60,8 +176,8 @@ impl SudokuBoard {
 	}
 
 	fn is_valid_col(&self, n: u16, col: usize) -> bool {
-		for i in 0..N2 {
-			if n == self.0[to_pos(i, col)] {
+		for p in col_positions(col) {
+			if n == self.0[p] {
 				return false;
 			}
 		}
@@ -69,14 +185,9 @@ impl SudokuBoard {
 	}
 
 	fn is_valid_group(&self, n: u16, row: usize, col: usize) -> bool {
-		let group_row = row - row % N;
-		let group_col = col - col % N;
-
-		for i in 0..N {
-			for j in 0..N {
-				if n == self.0[to_pos(group_row + i, group_col + j)] {
-					return false;
-				}
+		for p in group_positions(row, col) {
+			if n == self.0[p] {
+				return false;
 			}
 		}
 		true
