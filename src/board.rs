@@ -368,6 +368,7 @@ impl SudokuBoard {
         let sustitutions = rng.gen_range(10..20);
         use std::iter::FromIterator;
         let mut empty_positions = Vec::from_iter(domains.empty_positions.iter().cloned());
+        empty_positions.sort();
         for _ in 0..sustitutions {
             let pos = empty_positions.remove(rng.gen_range(0..empty_positions.len()));
             let mut possible = solution.get_possible(pos, &domains, usize::MAX);
@@ -384,7 +385,6 @@ impl SudokuBoard {
                 }
             }
         }
-
         solution.solve();
         solution
     }
