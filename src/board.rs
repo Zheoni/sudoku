@@ -1,6 +1,7 @@
 use super::{N, N2, SIZE};
 use crate::pos_util::*;
 
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt;
@@ -23,7 +24,46 @@ use rand_seeder::Seeder;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SudokuBoard([u8; SIZE]);
 
-type Domains = [[bool; N2]; SIZE];
+#[derive(Clone)]
+struct Domains {
+    domains: [[bool; N2]; SIZE],
+    empty_positions: HashSet<usize>,
+}
+
+impl Domains {
+    pub fn calculate_domains(board: &SudokuBoard) -> Self {
+        let mut d = Self {
+            domains: [[true; N2]; SIZE],
+            empty_positions: HashSet::new(),
+        };
+
+        // for each cell
+        for (pos, &value) in board.0.iter().enumerate() {
+            // if the cell is assigned
+            if value != 0 {
+                // set all of its possible values to false
+                d.domains[pos].fill(false);
+                // update the domains as if the value was just assigned
+                d.update_domains(pos, value);
+            } else {
+                d.empty_positions.insert(pos);
+            }
+        }
+        d
+    }
+
+    pub fn update_domains(&mut self, pos: usize, value: u8) {
+        assert!(value > 0);
+        let value = (value - 1) as usize;
+
+        // in all conflicting indexes (row, col, group) mark the new value as false
+        for p in adjacent_positions(pos) {
+            self.domains[p][value] = false;
+        }
+
+        self.empty_positions.remove(&pos);
+    }
+}
 
 // Solving
 
@@ -33,7 +73,7 @@ impl SudokuBoard {
     /// Solves the sudoku in place, returns true if the sudoku could be solved.
     /// Gets the first solution, does not check for more.
     pub fn solve(&mut self) -> bool {
-        let mut domains = self.calculate_domains();
+        let mut domains = Domains::calculate_domains(self);
         self.backtracking(&mut domains)
     }
 
@@ -51,11 +91,11 @@ impl SudokuBoard {
         for n in self.get_possible(pos, domains, N) {
             // if the value can be fitted (maybe this check is unnecesary
             // because of get_possible and the domain calculations)
-            if self.is_valid(n, pos) {
+            if self.is_valid(pos, n) {
                 // apply the value and update the domains
                 self.0[pos] = n;
-                temp_domains = *domains;
-                self.update_domains(domains, pos);
+                temp_domains = domains.clone();
+                domains.update_domains(pos, n);
                 // if sudoku can still be solved
                 if self.still_possible(domains) {
                     // continue searching
@@ -75,7 +115,7 @@ impl SudokuBoard {
 
     /// Solves the sudoku finding at most `max` solutions.
     pub fn solve_all(&self, max: usize) -> Vec<SudokuBoard> {
-        let mut domains = self.calculate_domains();
+        let mut domains = Domains::calculate_domains(self);
         let mut solutions = Vec::new();
         self.clone()
             .backtracking_all(&mut domains, max, 0, &mut solutions);
@@ -108,11 +148,11 @@ impl SudokuBoard {
             }
             // if the value can be fitted (maybe this check is unnecesary
             // because of get_possible and the domain calculations)
-            if self.is_valid(n, pos) {
+            if self.is_valid(pos, n) {
                 // apply the value and update the domains
                 self.0[pos] = n;
-                temp_domains = *domains;
-                self.update_domains(domains, pos);
+                temp_domains = domains.clone();
+                domains.update_domains(pos, n);
                 // if sudoku can still be solved
                 if self.still_possible(domains) {
                     // continue searching
@@ -130,7 +170,7 @@ impl SudokuBoard {
     /// Counts the number of solutions of the sudoku.
     /// It stops counting when `max` is reached.
     pub fn count_solutions(&self, max: usize) -> usize {
-        let mut domains = self.calculate_domains();
+        let mut domains = Domains::calculate_domains(self);
         self.clone().backtracking_count(&mut domains, max, 0)
     }
 
@@ -158,11 +198,11 @@ impl SudokuBoard {
             }
             // if the value can be fitted (maybe this check is unnecesary
             // because of get_possible and the domain calculations)
-            if self.is_valid(n, pos) {
+            if self.is_valid(pos, n) {
                 // apply the value and update the domains
                 self.0[pos] = n;
-                temp_domains = *domains;
-                self.update_domains(domains, pos);
+                temp_domains = domains.clone();
+                domains.update_domains(pos, n);
                 // if sudoku can still be solved
                 if self.still_possible(domains) {
                     // continue searching
@@ -177,42 +217,16 @@ impl SudokuBoard {
         count
     }
 
-    fn calculate_domains(&self) -> Domains {
-        let mut domains = [[true; N2]; SIZE];
-
-        // for each cell
-        for (pos, &n) in self.0.iter().enumerate() {
-            // if the cell is assigned
-            if n != 0 {
-                // set all of its possible values to false
-                domains[pos].fill(false);
-                // update the domains as if the value was just assigned
-                self.update_domains(&mut domains, pos);
-            }
-        }
-        domains
-    }
-
-    fn update_domains(&self, domains: &mut Domains, updated_pos: usize) {
-        let new_val = self.0[updated_pos] as usize;
-        assert!(new_val > 0);
-        let new_val = new_val - 1;
-
-        // in all conflicting indexes (row, col, group) mark the new value as false
-        for p in adjacent_positions(updated_pos) {
-            domains[p][new_val] = false;
-        }
-    }
-
     fn get_empty_position(&self, domains: &Domains, min_tie_to_solve: usize) -> Option<usize> {
         // Calculate the number of available values for each empty position
         let mut values: Vec<(u32, usize)> = domains
+            .empty_positions
             .iter()
-            .enumerate()
-            .filter(|(pos, _domain)| self.0[*pos] == 0)
-            .map(|(pos, domain)| {
+            .map(|&pos| {
                 (
-                    domain.iter().fold(0, |acc, &x| acc + if x { 1 } else { 0 }),
+                    domains.domains[pos]
+                        .iter()
+                        .fold(0, |acc, &x| acc + if x { 1 } else { 0 }),
                     pos,
                 )
             })
@@ -243,7 +257,7 @@ impl SudokuBoard {
     }
 
     fn get_possible(&self, pos: usize, domains: &Domains, min_possible_ordered: usize) -> Vec<u8> {
-        let possible: Vec<_> = domains[pos]
+        let possible: Vec<_> = domains.domains[pos]
             .iter()
             .enumerate()
             .filter(|(_, &possible)| possible)
@@ -252,12 +266,12 @@ impl SudokuBoard {
 
         if possible.len() > min_possible_ordered {
             let mut values = domains
+                .empty_positions
                 .iter()
-                .enumerate()
-                .filter(|(pos, _)| self.0[*pos] == 0)
-                .fold([0; N2], |mut acc, (_, domain)| {
+                .map(|&pos| domains.domains[pos])
+                .fold([0; N2], |mut acc, domain| {
                     acc.iter_mut()
-                        .zip(domain)
+                        .zip(domain.iter())
                         .for_each(|(accref, x)| *accref += if *x { 0 } else { 1 });
                     acc
                 })
@@ -275,16 +289,16 @@ impl SudokuBoard {
 
     fn still_possible(&self, domains: &Domains) -> bool {
         !domains
+            .empty_positions
             .iter()
-            .enumerate()
-            .filter(|(pos, _)| self.0[*pos] == 0)
-            .map(|(_, domain)| domain.iter().fold(0, |acc, &x| acc + if x { 1 } else { 0 }))
+            .map(|&pos| domains.domains[pos])
+            .map(|domain| domain.iter().fold(0, |acc, &x| acc + if x { 1 } else { 0 }))
             .any(|sum| sum == 0)
     }
 
     /// Checks if `n` can be placed at `pos`. It does not check if that will
     /// produce a dead end, just if its a legal move.
-    pub fn is_valid(&self, n: u8, pos: usize) -> bool {
+    pub fn is_valid(&self, pos: usize, n: u8) -> bool {
         for p in adjacent_positions(pos) {
             if n == self.0[p] {
                 return false;
@@ -294,7 +308,7 @@ impl SudokuBoard {
     }
 
     /// Checks if `n` can be placed in the row `row`.
-    pub fn is_valid_row(&self, n: u8, row: usize) -> bool {
+    pub fn is_valid_row(&self, row: usize, n: u8) -> bool {
         for p in row_positions(row) {
             if n == self.0[p] {
                 return false;
@@ -304,7 +318,7 @@ impl SudokuBoard {
     }
 
     /// Checks if `n` can be placed in the column `col`.
-    pub fn is_valid_col(&self, n: u8, col: usize) -> bool {
+    pub fn is_valid_col(&self, col: usize, n: u8) -> bool {
         for p in col_positions(col) {
             if n == self.0[p] {
                 return false;
@@ -315,7 +329,7 @@ impl SudokuBoard {
 
     /// Checks if `n` can be placed at the row `row` and the column `col` but
     /// only against the corresponding group.
-    pub fn is_valid_group(&self, n: u8, row: usize, col: usize) -> bool {
+    pub fn is_valid_group(&self, row: usize, col: usize, n: u8) -> bool {
         for p in group_positions(row, col) {
             if n == self.0[p] {
                 return false;
@@ -348,16 +362,12 @@ impl SudokuBoard {
             }
         }
 
-        let mut domains = solution.calculate_domains();
+        let mut domains = Domains::calculate_domains(&solution);
 
         // change some random positions to increase randomness
         let sustitutions = rng.gen_range(10..20);
-        let mut empty_positions: Vec<usize> = solution
-            .0
-            .iter()
-            .enumerate()
-            .filter_map(|(pos, &val)| if val == 0 { Some(pos) } else { None })
-            .collect();
+        use std::iter::FromIterator;
+        let mut empty_positions = Vec::from_iter(domains.empty_positions.iter().cloned());
         for _ in 0..sustitutions {
             let pos = empty_positions.remove(rng.gen_range(0..empty_positions.len()));
             let mut possible = solution.get_possible(pos, &domains, usize::MAX);
@@ -369,10 +379,10 @@ impl SudokuBoard {
                 solution.0[pos] = value;
 
                 if solution.count_solutions(1) == 1 {
+                    domains.update_domains(pos, value);
                     break;
                 }
             }
-            solution.update_domains(&mut domains, pos);
         }
 
         solution.solve();
@@ -614,5 +624,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.count_solutions(10), 2);
+    }
+
+    #[test]
+    fn generate() {
+        use rand::SeedableRng;
+        use rand_pcg::Pcg64;
+        let s = SudokuBoard::generate(&mut Pcg64::from_entropy());
+        for (pos, &val) in s.0.iter().enumerate() {
+            assert_ne!(val, 0);
+            assert!(s.is_valid(pos, val));
+        }
     }
 }
