@@ -20,7 +20,7 @@ use rand_seeder::Seeder;
 /// sudoku.solve();
 /// println!("{}", sudoku);
 /// ```
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SudokuBoard([u8; SIZE]);
 
 type Domains = [[bool; N2]; SIZE];
@@ -336,36 +336,47 @@ impl SudokuBoard {
     /// Generates a solved board using a PRNG.
     pub fn generate(rng: &mut Pcg64) -> Self {
         // loop while the board is not solved
-        loop {
-            let mut solution = Self::default();
+        let mut solution = Self::default();
 
-            // fill the groups in the main diagonal
-            for i in 0..N {
-                let mut numbers = (1..=N2 as u8).collect::<Vec<u8>>();
+        // fill the groups in the main diagonal
+        for i in 0..N {
+            let mut numbers = (1..=N2 as u8).collect::<Vec<u8>>();
+            numbers.shuffle(rng);
 
-                numbers.shuffle(rng);
-                for (p, val) in group_positions(i * N, i * N).zip(numbers) {
-                    solution.0[p] = val;
-                }
-            }
-
-            // change some random values to increase randomness
-            let sustitutions = rng.gen_range(2..15);
-            for _ in 0..sustitutions {
-                let pos = rng.gen_range(0..SIZE);
-                let value = loop {
-                    let value = rng.gen_range(0..N2 as u8);
-                    if value == 0 || solution.is_valid(value, pos) {
-                        break value;
-                    }
-                };
-                solution.0[pos] = value;
-            }
-
-            if solution.solve() {
-                break solution;
+            for (p, val) in group_positions(i * N, i * N).zip(numbers) {
+                solution.0[p] = val;
             }
         }
+
+        let mut domains = solution.calculate_domains();
+
+        // change some random positions to increase randomness
+        let sustitutions = rng.gen_range(10..20);
+        let mut empty_positions: Vec<usize> = solution
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(pos, &val)| if val == 0 { Some(pos) } else { None })
+            .collect();
+        for _ in 0..sustitutions {
+            let pos = empty_positions.remove(rng.gen_range(0..empty_positions.len()));
+            let mut possible = solution.get_possible(pos, &domains, usize::MAX);
+            possible.shuffle(rng);
+            loop {
+                let value = possible
+                    .pop()
+                    .expect("Error: No possible value while generating");
+                solution.0[pos] = value;
+
+                if solution.count_solutions(1) == 1 {
+                    break;
+                }
+            }
+            solution.update_domains(&mut domains, pos);
+        }
+
+        solution.solve();
+        solution
     }
 }
 
