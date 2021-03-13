@@ -15,10 +15,14 @@ use rand_seeder::Seeder;
 ///
 /// # Example
 /// ```
-/// use sudoku::SudokuBoard;
-/// use std::convert::TryFrom;
-/// let mut sudoku = SudokuBoard::try_from("6.3.581...2.....3.1...3.5.........87.5...26..27.86...4.........4....6.7.5...1..2.").unwrap();
+/// use sudoku::prelude::*;
+///
+/// let mut sudoku = SudokuBoard::try_from(
+///     "6.3.581...2.....3.1...3.5.........87.5...26..27.86...4.........4....6.7.5...1..2."
+/// ).unwrap();
+///
 /// sudoku.solve();
+///
 /// println!("{}", sudoku);
 /// ```
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -366,9 +370,8 @@ impl SudokuBoard {
 
         // change some random positions to increase randomness
         let sustitutions = rng.gen_range(10..20);
-        use std::iter::FromIterator;
-        let mut empty_positions = Vec::from_iter(domains.empty_positions.iter().cloned());
-        empty_positions.sort();
+        let mut empty_positions: Vec<usize> = domains.empty_positions.iter().cloned().collect();
+        empty_positions.sort_unstable();
         for _ in 0..sustitutions {
             let pos = empty_positions.remove(rng.gen_range(0..empty_positions.len()));
             let mut possible = solution.get_possible(pos, &domains, usize::MAX);
@@ -413,8 +416,8 @@ impl Default for SudokuBoard {
 
 impl fmt::Display for SudokuBoard {
     /// Pretty format for a sudoku
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_row(f: &mut fmt::Formatter<'_>, row: &[u8]) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn fmt_row(f: &mut fmt::Formatter, row: &[u8]) -> fmt::Result {
             write!(f, "║")?;
             for (i, &n) in row.iter().enumerate().take(N2) {
                 if n != 0 {
@@ -432,7 +435,7 @@ impl fmt::Display for SudokuBoard {
         }
 
         fn fmt_border(
-            f: &mut fmt::Formatter<'_>,
+            f: &mut fmt::Formatter,
             left: char,
             num_sep: char,
             group_sep: char,

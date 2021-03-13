@@ -1,6 +1,6 @@
-use sudoku::SudokuBoard;
+use sudoku::prelude::*;
 
 fn main() {
-    let s = SudokuBoard::generate_from_seed("SUDOKU");
-    println!("{}", s);
+    let puzzle = SudokuPuzzle::prepare().generate();
+    println!("{}", puzzle);
 }
