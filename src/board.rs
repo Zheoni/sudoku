@@ -346,7 +346,7 @@ impl SudokuBoard {
 // Generate
 impl SudokuBoard {
     /// Generates a solved board from a seed.
-    pub fn generate_from_seed<T: std::hash::Hash>(seed: T) -> Self {
+    pub fn generate_from_seed<T: std::hash::Hash>(seed: &T) -> Self {
         let mut rng = Seeder::from(seed).make_rng();
         Self::generate(&mut rng)
     }
@@ -417,59 +417,60 @@ impl Default for SudokuBoard {
 impl fmt::Display for SudokuBoard {
     /// Pretty format for a sudoku
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fn fmt_row(f: &mut fmt::Formatter, row: &[u8]) -> fmt::Result {
-            write!(f, "║")?;
-            for (i, &n) in row.iter().enumerate().take(N2) {
-                if n != 0 {
-                    write!(f, "{: ^3}", n)?;
-                } else {
-                    write!(f, "   ")?;
+        if f.alternate() {
+            write!(f, "{}", self.to_line_string())
+        } else {
+            fn fmt_row(f: &mut fmt::Formatter, row: &[u8]) -> fmt::Result {
+                write!(f, "║")?;
+                for (i, &n) in row.iter().enumerate().take(N2) {
+                    if n != 0 {
+                        write!(f, "{: ^3}", n)?;
+                    } else {
+                        write!(f, "   ")?;
+                    }
+                    if i % N != N - 1 {
+                        write!(f, "│")?;
+                    } else {
+                        write!(f, "║")?;
+                    }
                 }
-                if i % N != N - 1 {
-                    write!(f, "│")?;
-                } else {
-                    write!(f, "║")?;
-                }
+                writeln!(f)
             }
-            writeln!(f)
-        }
-
-        fn fmt_border(
-            f: &mut fmt::Formatter,
-            left: char,
-            num_sep: char,
-            group_sep: char,
-            right: char,
-            regular: char,
-        ) -> fmt::Result {
-            let num_border: String = std::iter::repeat(regular).take(3).collect();
-            write!(f, "{}", left)?;
+            fn fmt_border(
+                f: &mut fmt::Formatter,
+                left: char,
+                num_sep: char,
+                group_sep: char,
+                right: char,
+                regular: char,
+            ) -> fmt::Result {
+                let num_border: String = std::iter::repeat(regular).take(3).collect();
+                write!(f, "{}", left)?;
+                for i in 0..N2 {
+                    write!(f, "{}", num_border)?;
+                    if i != N2 - 1 {
+                        if i % N != N - 1 {
+                            write!(f, "{}", num_sep)?;
+                        } else {
+                            write!(f, "{}", group_sep)?;
+                        }
+                    }
+                }
+                writeln!(f, "{}", right)
+            }
+            fmt_border(f, '╔', '═', '╦', '╗', '═')?;
             for i in 0..N2 {
-                write!(f, "{}", num_border)?;
+                fmt_row(f, &self.0[i * N2..(i + 1) * N2])?;
                 if i != N2 - 1 {
                     if i % N != N - 1 {
-                        write!(f, "{}", num_sep)?;
+                        fmt_border(f, '║', '┼', '║', '║', '─')?;
                     } else {
-                        write!(f, "{}", group_sep)?;
+                        fmt_border(f, '╠', '═', '╬', '╣', '═')?;
                     }
                 }
             }
-            writeln!(f, "{}", right)
+            fmt_border(f, '╚', '═', '╩', '╝', '═')
         }
-
-        fmt_border(f, '╔', '═', '╦', '╗', '═')?;
-
-        for i in 0..N2 {
-            fmt_row(f, &self.0[i * N2..(i + 1) * N2])?;
-            if i != N2 - 1 {
-                if i % N != N - 1 {
-                    fmt_border(f, '║', '┼', '║', '║', '─')?;
-                } else {
-                    fmt_border(f, '╠', '═', '╬', '╣', '═')?;
-                }
-            }
-        }
-        fmt_border(f, '╚', '═', '╩', '╝', '═')
     }
 }
 

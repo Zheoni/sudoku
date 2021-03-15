@@ -7,9 +7,9 @@ use rand::distributions::Alphanumeric;
 use rand::prelude::*;
 use rand_pcg::Pcg64;
 use rand_seeder::Seeder;
+use std::convert::TryFrom;
 use std::fmt;
 
-pub const MAX_SOLUTIONS_COUNT: usize = 256;
 pub const ID_LEN: usize = 16;
 
 /// A sudoku puzzle, a pair of a puzzle and a solution to it. Also gives some
@@ -33,8 +33,8 @@ pub const ID_LEN: usize = 16;
 /// println!("{}", puzzle);
 /// ```
 pub struct SudokuPuzzle {
-    pub solution: SudokuBoard,
     pub puzzle: SudokuBoard,
+    pub solution: Option<SudokuBoard>,
     pub stats: PuzzleStats,
 }
 
@@ -61,42 +61,46 @@ impl SudokuPuzzle {
         Generator::default()
     }
 
-    /// Returns a string formatted to display the puzzle to a user.
-    pub fn to_puzzle_string(&self, show_solution: bool) -> String {
-        let mut s = String::new();
-
-        s.push_str(&format!("{}", self.puzzle));
-        s.push_str(&format!("ID: {}", self.stats.seed));
-        if let Some(solution_count) = self.stats.possible_solutions {
-            s.push_str(&format!(
-                "\nNumber of solutions: {}\n",
-                if solution_count < MAX_SOLUTIONS_COUNT {
-                    solution_count.to_string()
-                } else {
-                    format!("+{}", MAX_SOLUTIONS_COUNT - 1)
-                }
-            ))
-        }
-        if show_solution {
-            s.push_str(&format!("\nSolution: \n{}", self.solution));
-        }
-
-        s
+    pub fn csv_head() -> &'static str {
+        "puzzle,solution,seed,empty_positions,difficulty,possible_solutions,board_time_us,puzzle_time_us"
     }
 }
 
 impl fmt::Display for SudokuPuzzle {
-    /// Writes `[to_puzzle_string](false)`
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_puzzle_string(false))
+        if f.alternate() {
+            write!(f, "{:#},", self.puzzle)?;
+            if let Some(solution) = self.solution.as_ref() {
+                write!(f, "{:#}", solution)?;
+            }
+            write!(f, ",")?;
+            let s = &self.stats;
+            write!(
+                f,
+                "{},{},{},{},{},{}",
+                s.seed,
+                s.empty_positions,
+                s.difficulty,
+                if let Some(ps) = s.possible_solutions {
+                    ps.to_string()
+                } else {
+                    String::default()
+                },
+                s.times.0.as_micros(),
+                s.times.1.as_micros(),
+            )
+        } else {
+            write!(f, "{}", self.puzzle)?;
+            writeln!(f, "ID: {}", self.stats.seed)?;
+            if let Some(solution_count) = self.stats.possible_solutions {
+                writeln!(f, "Number of solutions: {}", solution_count)?;
+            }
+            if let Some(solution) = self.solution.as_ref() {
+                write!(f, "Solution:\n{}", solution)?;
+            }
+            Ok(())
+        }
     }
-}
-
-pub enum Difficulty {
-    Easy,
-    Normal,
-    Hard,
-    Insane,
 }
 
 /// Configurable [SudokuPuzzle] generator
@@ -106,12 +110,14 @@ pub struct Generator {
     seed: Option<String>,
     difficulty: Difficulty,
     count_solutions: bool,
+    max_count_solutions: usize,
+    show_solution: bool,
 }
 
 impl Generator {
     /// Generate the a puzzle from the generator.
-    pub fn generate(self) -> SudokuPuzzle {
-        let seed = self.seed.unwrap_or_else(|| {
+    pub fn generate(&self) -> SudokuPuzzle {
+        let seed = self.seed.as_ref().cloned().unwrap_or_else(|| {
             thread_rng()
                 .sample_iter(&Alphanumeric)
                 .take(ID_LEN)
@@ -137,7 +143,7 @@ impl Generator {
             puzzle[pos] = 0;
             if !self.unique || puzzle.count_solutions(2) == 1 {
                 removed += 1;
-                if removed == self.empty_positions {
+                if removed >= self.empty_positions {
                     break;
                 }
             } else {
@@ -147,21 +153,25 @@ impl Generator {
         let puzzle_time = now.elapsed();
 
         let possible_solutions = if self.count_solutions {
-            Some(puzzle.count_solutions(MAX_SOLUTIONS_COUNT))
+            Some(puzzle.count_solutions(self.max_count_solutions))
         } else {
             None
         };
 
         let stats = PuzzleStats {
             empty_positions: self.empty_positions,
-            difficulty: self.difficulty,
+            difficulty: self.difficulty.clone(),
             possible_solutions,
             times: (solution_time, puzzle_time),
             seed,
         };
 
         SudokuPuzzle {
-            solution,
+            solution: if self.show_solution {
+                Some(solution)
+            } else {
+                None
+            },
             puzzle,
             stats,
         }
@@ -199,6 +209,18 @@ impl Generator {
         self.count_solutions = do_count;
         self
     }
+
+    /// Configure the maximum number of solutions to count
+    pub fn max_count_solutions(mut self, max: usize) -> Self {
+        self.max_count_solutions = max;
+        self
+    }
+
+    /// If the solution is returned
+    pub fn show_solution(mut self, do_show: bool) -> Self {
+        self.show_solution = do_show;
+        self
+    }
 }
 
 impl Default for Generator {
@@ -209,7 +231,52 @@ impl Default for Generator {
             difficulty: Difficulty::Normal,
             seed: None,
             count_solutions: false,
+            max_count_solutions: 256,
+            show_solution: false,
         }
+    }
+}
+
+#[derive(Clone)]
+pub enum Difficulty {
+    Easy,
+    Normal,
+    Hard,
+    Insane,
+}
+
+impl Difficulty {
+    pub const fn get_all() -> &'static [&'static str] {
+        &["easy", "normal", "hard", "insane"]
+    }
+}
+
+impl TryFrom<&str> for Difficulty {
+    type Error = &'static str;
+    fn try_from(val: &str) -> Result<Self, Self::Error> {
+        match val {
+            "easy" => Ok(Self::Easy),
+            "normal" => Ok(Self::Normal),
+            "hard" => Ok(Self::Hard),
+            "insane" => Ok(Self::Insane),
+            _ => Err("Unknown difficulty"),
+        }
+    }
+}
+
+impl fmt::Display for Difficulty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Difficulty::*;
+        write!(
+            f,
+            "{}",
+            match self {
+                Easy => "easy",
+                Normal => "normal",
+                Hard => "hard",
+                Insane => "insane",
+            }
+        )
     }
 }
 
@@ -219,9 +286,12 @@ mod tests {
 
     #[test]
     fn same_board_with_seed() {
-        let puzzle = SudokuPuzzle::prepare().with_seed("TEST").generate();
-        let solution = SudokuBoard::generate_from_seed("TEST");
+        let puzzle = SudokuPuzzle::prepare()
+            .with_seed("TEST")
+            .show_solution(true)
+            .generate();
+        let solution = SudokuBoard::generate_from_seed(&"TEST");
 
-        assert_eq!(puzzle.solution, solution);
+        assert_eq!(puzzle.solution.unwrap(), solution);
     }
 }
