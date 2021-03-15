@@ -159,7 +159,7 @@ impl Generator {
         };
 
         let stats = PuzzleStats {
-            empty_positions: self.empty_positions,
+            empty_positions: removed,
             difficulty: self.difficulty.clone(),
             possible_solutions,
             times: (solution_time, puzzle_time),
