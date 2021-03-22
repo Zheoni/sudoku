@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 //! # Sudoku
 //! Library to solve and generate sudokus.
 //!
@@ -37,4 +39,5 @@ pub mod puzzle;
 
 const N: usize = 3;
 const N2: usize = N * N;
+/// Size of the board
 pub const SIZE: usize = N2 * N2;

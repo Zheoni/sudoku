@@ -1,3 +1,6 @@
+//! Contains funcionality of a sudoku puzzle: an unsolved
+//! sudoku to present to the user.
+
 use crate::board::SudokuBoard;
 use crate::SIZE;
 
@@ -10,6 +13,7 @@ use rand_seeder::Seeder;
 use std::convert::TryFrom;
 use std::fmt;
 
+/// Length of the generated IDs
 pub const ID_LEN: usize = 16;
 
 /// A sudoku puzzle, a pair of a puzzle and a solution to it. Also gives some
@@ -33,8 +37,11 @@ pub const ID_LEN: usize = 16;
 /// println!("{}", puzzle);
 /// ```
 pub struct SudokuPuzzle {
+    /// Puzzle board generated
     pub puzzle: SudokuBoard,
+    /// Solution of the board, may be not present
     pub solution: Option<SudokuBoard>,
+    /// Stats about the generated puzzle
     pub stats: PuzzleStats,
 }
 
@@ -61,6 +68,7 @@ impl SudokuPuzzle {
         Generator::default()
     }
 
+    /// Prints the CSV head line when writting a puzzle as csv.
     pub fn csv_head() -> &'static str {
         "puzzle,solution,seed,empty_positions,difficulty,possible_solutions,board_time_us,puzzle_time_us"
     }
@@ -237,7 +245,10 @@ impl Default for Generator {
     }
 }
 
+/// Difficulty of the puzzles. Currently only changes the number
+/// of empty positions.
 #[derive(Clone)]
+#[allow(missing_docs)]
 pub enum Difficulty {
     Easy,
     Normal,
@@ -246,6 +257,7 @@ pub enum Difficulty {
 }
 
 impl Difficulty {
+    /// Returns all the str representations of the difficulty levels
     pub const fn get_all() -> &'static [&'static str] {
         &["easy", "normal", "hard", "insane"]
     }

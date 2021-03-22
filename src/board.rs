@@ -1,3 +1,6 @@
+//! Contains all funcionality of a sudoku board. Solving, generating
+//! a solved one, printing.
+
 use super::{N, N2, SIZE};
 use crate::pos_util::*;
 
