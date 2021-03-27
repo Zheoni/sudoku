@@ -27,7 +27,7 @@
 //! use sudoku::prelude::*;
 //!
 //! let mut puzzle = SudokuPuzzle::prepare()
-//!     .with_difficulty(Difficulty::Hard)
+//!     .with_given_difficulty(Difficulty::Hard)
 //!     .generate();
 //! println!("{}", puzzle);
 //! ```

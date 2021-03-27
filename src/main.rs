@@ -163,7 +163,7 @@ fn main() -> Result<(), Error> {
                         .long("difficulty")
                         .takes_value(true)
                         .default_value("normal")
-                        .possible_values(Difficulty::get_all())
+                        .possible_values(GeneratorDifficulty::get_all())
                 )
                 .arg(
                     Arg::with_name("show_solution")
