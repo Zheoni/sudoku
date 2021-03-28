@@ -529,16 +529,17 @@ impl TryFrom<&[u8]> for SudokuBoard {
     }
 }
 
-impl std::ops::Index<usize> for SudokuBoard {
-    type Output = u8;
-    fn index(&self, idx: usize) -> &Self::Output {
-        &self.0[idx]
+impl std::ops::Deref for SudokuBoard {
+    type Target = [u8; SIZE];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-impl std::ops::IndexMut<usize> for SudokuBoard {
-    fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
-        &mut self.0[idx]
+impl std::ops::DerefMut for SudokuBoard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
