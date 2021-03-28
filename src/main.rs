@@ -39,13 +39,13 @@ impl TryFrom<&str> for OutputFormat {
 
 #[derive(Debug)]
 enum Error {
-    IOError(io::Error),
+    IoError(io::Error),
     ErrorMessage(&'static str),
 }
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
-        Error::IOError(err)
+        Error::IoError(err)
     }
 }
 
@@ -300,7 +300,7 @@ fn handle_solve(
             SudokuBoard::try_from(input.as_str())?
         };
 
-        #[allow(clippy::collapsible_if)]
+        #[allow(clippy::collapsible_else_if)]
         if all_solutions {
             let solutions = board.solve_all(multiple_limit);
             if solutions.is_empty() {

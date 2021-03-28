@@ -184,7 +184,7 @@ impl Generator {
 
         let stats = PuzzleStats {
             empty_positions: removed,
-            difficulty: difficulty.clone(),
+            difficulty,
             possible_solutions,
             times: (solution_time, puzzle_time),
             seed,
@@ -295,7 +295,7 @@ impl TryFrom<&str> for GeneratorDifficulty {
     fn try_from(val: &str) -> Result<Self, Self::Error> {
         match val {
             "random" => Ok(Self::Random),
-            _ => Difficulty::try_from(val).map(|d| Self::Given(d)),
+            _ => Difficulty::try_from(val).map(Self::Given),
         }
     }
 }
