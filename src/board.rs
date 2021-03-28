@@ -372,11 +372,14 @@ impl SudokuBoard {
         let mut domains = Domains::calculate_domains(&solution);
 
         // change some random positions to increase randomness
-        let sustitutions = rng.gen_range(10..20);
+        let sustitutions: u32 = rng.gen_range(10u32..20u32);
         let mut empty_positions: Vec<usize> = domains.empty_positions.iter().cloned().collect();
         empty_positions.sort_unstable();
         for _ in 0..sustitutions {
-            let pos = empty_positions.remove(rng.gen_range(0..empty_positions.len()));
+            // The casting from usize to u32 is to make the seed generation stable between
+            // platforms where usize has different sizes.
+            let idx = rng.gen_range(0..empty_positions.len() as u32) as usize;
+            let pos = empty_positions.remove(idx);
             let mut possible = solution.get_possible(pos, &domains, usize::MAX);
             possible.shuffle(rng);
             loop {
