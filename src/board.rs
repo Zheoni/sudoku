@@ -74,22 +74,52 @@ impl Domains {
 
 // Solving
 
+struct SolveParams {
+    max_solutions: usize,
+    save_solutions: bool,
+}
+
+struct SolveResults {
+    solution_count: usize,
+    solutions: Option<Vec<SudokuBoard>>,
+}
+
 // multiple (and similar) backtracking functions to avoid checking parameters
 // to make them behave differently
 impl SudokuBoard {
-    /// Solves the sudoku in place, returns true if the sudoku could be solved.
-    /// Gets the first solution, does not check for more.
-    pub fn solve(&mut self) -> bool {
+    fn backtracking(&mut self, params: SolveParams) -> SolveResults {
+        let mut metadata = {
+            let mut md = SolveResults {
+                solution_count: 0,
+                solutions: None,
+            };
+            if params.save_solutions {
+                md.solutions = Some(Vec::new());
+            }
+            md
+        };
+
         let mut domains = Domains::calculate_domains(self);
-        self.backtracking(&mut domains)
+
+        self.backtracking_rec(&mut domains, &params, &mut metadata);
+        metadata
     }
 
-    fn backtracking(&mut self, domains: &mut Domains) -> bool {
+    fn backtracking_rec(
+        &mut self,
+        domains: &mut Domains,
+        params: &SolveParams,
+        md: &mut SolveResults,
+    ) {
         // get the first empty postion
         let pos = self.get_empty_position(domains, SIZE / 2);
         if pos.is_none() {
             // if there's none, we found a solution
-            return true;
+            md.solution_count += 1;
+            if params.save_solutions {
+                md.solutions.as_mut().unwrap().push(self.clone());
+            }
+            return;
         }
         let pos = pos.unwrap();
         let mut temp_domains: Domains;
@@ -106,122 +136,50 @@ impl SudokuBoard {
                 // if sudoku can still be solved
                 if self.still_possible(domains) {
                     // continue searching
-                    if self.backtracking(domains) {
-                        // solution found
-                        return true;
-                    }
+                    self.backtracking_rec(domains, params, md);
                 }
                 // backtrack: restore the position and the domains
                 *domains = temp_domains;
+
+                if md.solution_count >= params.max_solutions {
+                    return;
+                }
             }
         }
         self.0[pos] = 0;
+    }
 
-        false
+    /// Solves the sudoku in place, returns true if the sudoku could be solved.
+    /// Gets the first solution, does not check for more.
+    pub fn solve(&mut self) -> bool {
+        self.backtracking(SolveParams {
+            max_solutions: 1,
+            save_solutions: false,
+        })
+        .solution_count
+            > 0
     }
 
     /// Solves the sudoku finding at most `max` solutions.
     pub fn solve_all(&self, max: usize) -> Vec<SudokuBoard> {
-        let mut domains = Domains::calculate_domains(self);
-        let mut solutions = Vec::new();
         self.clone()
-            .backtracking_all(&mut domains, max, 0, &mut solutions);
-        solutions
-    }
-
-    fn backtracking_all(
-        &mut self,
-        domains: &mut Domains,
-        max_solutions: usize,
-        mut count: usize,
-        solutions: &mut Vec<Self>,
-    ) -> usize {
-        // get the first empty postion
-        let pos = self.get_empty_position(domains, SIZE / 2);
-        if pos.is_none() {
-            // if there's none, we found a solution.
-            // add 1 to count
-            solutions.push(self.clone());
-            return 1 + count;
-        }
-        let pos = pos.unwrap();
-        let mut temp_domains: Domains;
-
-        // try all possible values
-        for n in self.get_possible(pos, domains, N) {
-            // when the limit is reached, stop searching
-            if count >= max_solutions {
-                return count;
-            }
-            // if the value can be fitted (maybe this check is unnecesary
-            // because of get_possible and the domain calculations)
-            if self.is_valid(pos, n) {
-                // apply the value and update the domains
-                self.0[pos] = n;
-                temp_domains = domains.clone();
-                domains.update_domains(pos, n);
-                // if sudoku can still be solved
-                if self.still_possible(domains) {
-                    // continue searching
-                    count = self.backtracking_all(domains, max_solutions, count, solutions);
-                }
-                // backtrack: restore the position and the domains
-                *domains = temp_domains;
-            }
-        }
-        self.0[pos] = 0;
-
-        count
+            .backtracking(SolveParams {
+                max_solutions: max,
+                save_solutions: true,
+            })
+            .solutions
+            .unwrap()
     }
 
     /// Counts the number of solutions of the sudoku.
     /// It stops counting when `max` is reached.
     pub fn count_solutions(&self, max: usize) -> usize {
-        let mut domains = Domains::calculate_domains(self);
-        self.clone().backtracking_count(&mut domains, max, 0)
-    }
-
-    fn backtracking_count(
-        &mut self,
-        domains: &mut Domains,
-        max_solutions: usize,
-        mut count: usize,
-    ) -> usize {
-        // get the first empty postion
-        let pos = self.get_empty_position(domains, SIZE / 2);
-        if pos.is_none() {
-            // if there's none, we found a solution.
-            // add 1 to count
-            return 1 + count;
-        }
-        let pos = pos.unwrap();
-        let mut temp_domains: Domains;
-
-        // try all possible values
-        for n in self.get_possible(pos, domains, N) {
-            // when the limit is reached, stop searching
-            if count >= max_solutions {
-                return count;
-            }
-            // if the value can be fitted (maybe this check is unnecesary
-            // because of get_possible and the domain calculations)
-            if self.is_valid(pos, n) {
-                // apply the value and update the domains
-                self.0[pos] = n;
-                temp_domains = domains.clone();
-                domains.update_domains(pos, n);
-                // if sudoku can still be solved
-                if self.still_possible(domains) {
-                    // continue searching
-                    count = self.backtracking_count(domains, max_solutions, count);
-                }
-                // backtrack: restore the position and the domains
-                *domains = temp_domains;
-            }
-        }
-        self.0[pos] = 0;
-
-        count
+        self.clone()
+            .backtracking(SolveParams {
+                max_solutions: max,
+                save_solutions: false,
+            })
+            .solution_count
     }
 
     fn get_empty_position(&self, domains: &Domains, min_tie_to_solve: usize) -> Option<usize> {

@@ -332,6 +332,16 @@ impl Difficulty {
     pub const fn get_all() -> &'static [&'static str; 4] {
         &["easy", "normal", "hard", "insane"]
     }
+
+    /// Returns the str representation of the difficulty
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Difficulty::Easy => "easy",
+            Difficulty::Normal => "normal",
+            Difficulty::Hard => "hard",
+            Difficulty::Insane => "insane",
+        }
+    }
 }
 
 impl TryFrom<&str> for Difficulty {
@@ -349,21 +359,16 @@ impl TryFrom<&str> for Difficulty {
 
 impl fmt::Display for Difficulty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Difficulty::*;
-        let name = if f.alternate() {
-            match self {
-                Easy => "easy",
-                Normal => "normal",
-                Hard => "hard",
-                Insane => "insane",
+        let name = self.as_str().to_string();
+
+        let name = if !f.alternate() {
+            let mut c = name.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
             }
         } else {
-            match self {
-                Easy => "Easy",
-                Normal => "Normal",
-                Hard => "Hard",
-                Insane => "Insane",
-            }
+            name
         };
 
         write!(f, "{}", name)
