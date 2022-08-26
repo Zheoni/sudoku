@@ -10,189 +10,122 @@ pub const fn to_row_col(pos: usize) -> (usize, usize) {
     (pos / N2, pos % N2)
 }
 
-pub trait PosIteratorKind {}
-
-pub struct RowKind(usize);
-impl PosIteratorKind for RowKind {}
-
-pub struct ColKind(usize);
-impl PosIteratorKind for ColKind {}
-
-pub struct GroupKind {
-    group_row: usize,
-    group_col: usize,
+pub fn row_positions(row: usize) -> impl Iterator<Item = usize> + ExactSizeIterator {
+    (0..N2).map(move |i| to_pos(row, i))
 }
-impl PosIteratorKind for GroupKind {}
 
-pub struct AdjacentKind {
+pub fn col_positions(col: usize) -> impl Iterator<Item = usize> + ExactSizeIterator {
+    (0..N2).map(move |i| to_pos(i, col))
+}
+
+pub fn group_positions(row: usize, col: usize) -> impl Iterator<Item = usize> + ExactSizeIterator {
+    let group_row = row - row % N;
+    let group_col = col - col % N;
+
+    (0..N2).map(move |group_i| {
+        let (i, j) = (group_i / N, group_i % N);
+        to_pos(group_row + i, group_col + j)
+    })
+}
+
+pub fn adjacent_positions(pos: usize) -> impl Iterator<Item = usize> + ExactSizeIterator {
+    let (row, col) = to_row_col(pos);
+    AdjacentPositionsIterator::new(row, col)
+}
+
+struct AdjacentPositionsIterator {
+    i: usize,
     row: usize,
     col: usize,
     group_row: usize,
     group_col: usize,
-    idx: usize,
+    phase: Phase,
     count: usize,
 }
-impl PosIteratorKind for AdjacentKind {}
 
-pub struct PosIterator<K: PosIteratorKind> {
-    kind: K,
-    i: usize,
+enum Phase {
+    Row,
+    Column,
+    Group,
+    End,
 }
 
-pub fn row_positions(row: usize) -> PosIterator<RowKind> {
-    PosIterator {
-        kind: RowKind(row),
-        i: 0,
-    }
-}
-
-pub fn col_positions(col: usize) -> PosIterator<ColKind> {
-    PosIterator {
-        kind: ColKind(col),
-        i: 0,
-    }
-}
-
-pub fn group_positions(row: usize, col: usize) -> PosIterator<GroupKind> {
-    let group_row = row - row % N;
-    let group_col = col - col % N;
-
-    PosIterator {
-        kind: GroupKind {
-            group_row,
-            group_col,
-        },
-        i: 0,
-    }
-}
-
-pub fn adjacent_positions(pos: usize) -> PosIterator<AdjacentKind> {
-    let (row, col) = to_row_col(pos);
-    let group_row = row - row % N;
-    let group_col = col - col % N;
-
-    PosIterator {
-        kind: AdjacentKind {
+impl AdjacentPositionsIterator {
+    fn new(row: usize, col: usize) -> Self {
+        Self {
+            i: 0,
             row,
             col,
-            group_row,
-            group_col,
-            idx: pos,
+            group_row: row - row % N,
+            group_col: col - col % N,
+            phase: Phase::Row,
             count: 0,
-        },
-        i: 0,
-    }
-}
-
-impl Iterator for PosIterator<RowKind> {
-    type Item = usize;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.i < N2 {
-            let current_index = to_pos(self.kind.0, self.i);
-            self.i += 1;
-            Some(current_index)
-        } else {
-            None
         }
     }
 }
 
-impl ExactSizeIterator for PosIterator<RowKind> {
-    fn len(&self) -> usize {
-        N2 - self.i
-    }
-}
-
-impl Iterator for PosIterator<ColKind> {
+impl Iterator for AdjacentPositionsIterator {
     type Item = usize;
+
     fn next(&mut self) -> Option<Self::Item> {
-        if self.i < N2 {
-            let current_index = to_pos(self.i, self.kind.0);
-            self.i += 1;
-            Some(current_index)
-        } else {
-            None
+        if self.i >= N2 {
+            self.phase = match self.phase {
+                Phase::Row => Phase::Column,
+                Phase::Column => Phase::Group,
+                Phase::Group => Phase::End,
+                Phase::End => Phase::End,
+            };
+            self.i = 0;
         }
-    }
-}
-
-impl ExactSizeIterator for PosIterator<ColKind> {
-    fn len(&self) -> usize {
-        N2 - self.i
-    }
-}
-
-impl Iterator for PosIterator<GroupKind> {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.i < N2 {
-            let (i, j) = (self.i / N, self.i % N);
-            let current_index = to_pos(self.kind.group_row + i, self.kind.group_col + j);
-            self.i += 1;
-            Some(current_index)
-        } else {
-            None
-        }
-    }
-}
-
-impl ExactSizeIterator for PosIterator<GroupKind> {
-    fn len(&self) -> usize {
-        N2 - self.i
-    }
-}
-
-impl Iterator for PosIterator<AdjacentKind> {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut r = None;
-        if self.i < N2 {
-            if self.kind.col != self.i {
-                r = Some(to_pos(self.kind.row, self.i));
-                self.i += 1;
-                self.kind.count += 1;
-            } else {
-                self.i += 1;
-
-                r = self.next();
+        match self.phase {
+            Phase::Row => {
+                // skip self col
+                if self.i == self.col {
+                    self.i += 1;
+                    self.next()
+                } else {
+                    let r = to_pos(self.row, self.i);
+                    self.i += 1;
+                    self.count += 1;
+                    Some(r)
+                }
             }
-        } else if self.i < 2 * N2 {
-            let i = self.i - N2;
-            if self.kind.row != i {
-                r = Some(to_pos(i, self.kind.col));
-                self.i += 1;
-                self.kind.count += 1;
-            } else {
-                self.i += 1;
-
-                r = self.next();
+            Phase::Column => {
+                // skip self row
+                if self.i == self.row {
+                    self.i += 1;
+                    self.next()
+                } else {
+                    let r = to_pos(self.i, self.col);
+                    self.i += 1;
+                    self.count += 1;
+                    Some(r)
+                }
             }
-        } else if self.i < 3 * N2 {
-            let i = self.i - 2 * N2;
-            let (i, j) = (i / N, i % N);
-
-            let (crow, ccol) = (self.kind.group_row + i, self.kind.group_col + j);
-
-            let current_index = to_pos(crow, ccol);
-            self.i += 1;
-
-            if self.kind.row == crow || self.kind.col == ccol || current_index == self.kind.idx {
-                r = self.next();
-            } else {
-                r = Some(current_index);
-                self.kind.count += 1;
+            Phase::Group => {
+                let (g_row, g_col) = (self.i / N, self.i % N);
+                let row = self.group_row + g_row;
+                let col = self.group_col + g_col;
+                // skip self row and col
+                if row == self.row || col == self.col {
+                    self.i += 1;
+                    self.next()
+                } else {
+                    let r = to_pos(row, col);
+                    self.i += 1;
+                    self.count += 1;
+                    Some(r)
+                }
             }
+            Phase::End => None,
         }
-
-        r
     }
 }
 
-impl ExactSizeIterator for PosIterator<AdjacentKind> {
+impl ExactSizeIterator for AdjacentPositionsIterator {
     fn len(&self) -> usize {
-        (N2 - 1 + N * (N - 1) * 2) - self.kind.count
+        const TOTAL: usize = (N2 - 1) * 2 + (N2 - (N * 2) + 1);
+        TOTAL - self.count
     }
 }
 
@@ -231,28 +164,44 @@ mod tests {
     #[test]
     fn test_adjacent() {
         if N == 3 {
+            let expected_length = 20;
+            #[rustfmt::skip]
+            let expected = vec![
+                9,     11, 12, 13, 14, 15, 16, 17,
+                1,     19, 28, 37, 46, 55, 64, 73,
+                0,     2,              18,     20
+            ];
+
             let mut it = adjacent_positions(10);
-            assert_eq!(it.len(), 20);
-            assert_eq!(it.next(), Some(9));
-            assert_eq!(it.next(), Some(11));
-            assert_eq!(it.next(), Some(12));
-            assert_eq!(it.next(), Some(13));
-            assert_eq!(it.next(), Some(14));
-            assert_eq!(it.next(), Some(15));
-            assert_eq!(it.next(), Some(16));
-            assert_eq!(it.next(), Some(17));
-            assert_eq!(it.next(), Some(1));
-            assert_eq!(it.next(), Some(19));
-            assert_eq!(it.next(), Some(28));
-            assert_eq!(it.next(), Some(37));
-            assert_eq!(it.next(), Some(46));
-            assert_eq!(it.next(), Some(55));
-            assert_eq!(it.next(), Some(64));
-            assert_eq!(it.next(), Some(73));
-            assert_eq!(it.next(), Some(0));
-            assert_eq!(it.next(), Some(2));
-            assert_eq!(it.next(), Some(18));
-            assert_eq!(it.next(), Some(20));
+            for (i, val) in expected.into_iter().enumerate() {
+                assert_eq!(it.len(), expected_length - i);
+                assert_eq!(it.next(), Some(val));
+            }
+
+            assert_eq!(it.len(), 0);
+            assert_eq!(it.next(), None);
+            assert_eq!(it.len(), 0);
+        }
+    }
+
+    #[test]
+    fn test_adjacent_edge() {
+        if N == 3 {
+            let expected_length = 20;
+            #[rustfmt::skip]
+            let expected = vec![
+                36, 37, 38, 39, 40, 41, 42, 43,
+                 8, 17, 26, 35,     53, 62, 71, 80, 
+                33, 34,                 51, 52
+            ];
+
+            let mut it = adjacent_positions(44);
+            for (i, val) in expected.into_iter().enumerate() {
+                assert_eq!(it.len(), expected_length - i);
+                assert_eq!(it.next(), Some(val));
+            }
+
+            assert_eq!(it.len(), 0);
             assert_eq!(it.next(), None);
             assert_eq!(it.len(), 0);
         }
